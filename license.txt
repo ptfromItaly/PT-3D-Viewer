@@ -1,0 +1,56 @@
+Custom Source-Available License (CSAL) v1.0
+
+Copyright (c) 2026
+PRECITOOLS SRLS
+Via B. Crespi, 19, MAC 4 – 4°Piano
+20159 Milano (MI), Italy
+Fiscal code / VAT N. IT09096770962
+
+1. Grant of Permission
+
+You are permitted to:
+
+Access and use the Software through its official website free of charge.
+View and study the source code for educational, research, and evaluation purposes.
+
+No other rights are granted.
+
+2. Restrictions
+
+Unless you have obtained prior written permission from the copyright holder, you may NOT:
+
+* Copy the Software or any portion of its source code.
+* Use any part of the source code in another project, whether modified or unmodified.
+* Redistribute, republish, mirror, or host the Software or its source code on any website, repository, or other platform.
+* Create forks intended for public use or distribution.
+* Modify, sublicense, sell, rent, or otherwise distribute the Software or any derivative works.
+* Remove or alter any copyright or license notices.
+* Represent the Software or any part of it as your own work.
+* Deploy, host, operate, or make the Software or any modified version of it available as a public or private online service without prior written permission from the copyright holder.
+* Create or distribute any software substantially derived from the source code of this project.
+
+3. Ownership
+
+The Software and all intellectual property rights related to it remain the exclusive property of the copyright holder.
+
+This License grants no ownership rights or intellectual property rights except those expressly stated above.
+
+4. Public Repository
+
+The source code may be publicly available in a repository solely for transparency, educational purposes, and community review.
+
+The public availability of the source code does not grant permission to copy, redistribute, modify, reuse, or incorporate the code into other software.
+
+5. Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
+
+6. Termination
+
+Any violation of this License immediately terminates all rights granted under it.
+
+7. Governing Law
+
+This License shall be governed by the laws applicable in the jurisdiction of the copyright holder.
