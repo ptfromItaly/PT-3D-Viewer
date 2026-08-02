@@ -9,7 +9,7 @@
     Copyright (c) 2026 PRECITOOLS SRLS, Italy.
     Licensed under the Custom Source-Available License.
     Unauthorized copying, redistribution, modification, or deployment is prohibited.
-    Version: v0.018 public v0.1
+    Version: v0.019 public v0.2
     -->
     <link rel="stylesheet" type="text/css" media="screen" href="https://www.precitools-it.com/css-styles/pt_3d_viever_style.css" />
     <script type="importmap">
@@ -367,6 +367,7 @@
         let isLMBDown = false;
         let isRMBDown = false;
         let isHoveringSnap = false;
+        let isShiftDown = false; // <-- ADDED for Shift tracking
 
         // Custom Rotate Cursor (Base64 SVG encoded) 
         const ROTATE_CURSOR = `url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2218%22%20height%3D%2218%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cg%20stroke%3D%22black%22%20stroke-width%3D%224%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m15.194%2013.707%203.814%201.86-1.86%203.814%22/%3E%3Cpath%20d%3D%22M16.47214%207.52786%20A5%2010%200%201%200%2013%2021.79796%22/%3E%3Cpath%20d%3D%22M21.79796%2011%20A10%205%200%201%200%2019%2015.57071%22/%3E%3C/g%3E%3Cg%20stroke%3D%22white%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m15.194%2013.707%203.814%201.86-1.86%203.814%22/%3E%3Cpath%20d%3D%22M16.47214%207.52786%20A5%2010%200%201%200%2013%2021.79796%22/%3E%3Cpath%20d%3D%22M21.79796%2011%20A10%205%200%201%200%2019%2015.57071%22/%3E%3C/g%3E%3C/svg%3E') 9 9, auto`;
@@ -374,10 +375,11 @@
         function updateCursor() {
             let cursorStyle = 'default';
             
-            if (isLMBDown) {
-                cursorStyle = ROTATE_CURSOR; // Rotate Cursor
-            } else if (isRMBDown) {
+            // If the right mouse button or LMB + SHIFT is pressed -> set the PAN icon (move)
+            if ((isLMBDown && isShiftDown) || isRMBDown) {
                 cursorStyle = 'move'; // Pan/Drag Cursor
+            } else if (isLMBDown) {
+                cursorStyle = ROTATE_CURSOR; // Rotate Cursor
             } else if (isHoveringSnap) {
                 cursorStyle = 'crosshair'; // Snap point Cursor
             }
@@ -470,20 +472,56 @@
             renderer.domElement.addEventListener('mousemove', onMouseMove);
             renderer.domElement.addEventListener('click', onClick);
 
-            // Mousedown/Mouseup listeners to track cursor states
+            // Mousedown/Mouseup listeners to track cursor states and Shift+LMB Pan
             renderer.domElement.addEventListener('mousedown', (e) => {
-                if (e.button === 0) isLMBDown = true;
+                isShiftDown = e.shiftKey;
+                if (e.button === 0) {
+                    isLMBDown = true;
+                    // Переключаем ЛКМ в OrbitControls на PAN, если нажат Shift
+                    controls.mouseButtons.LEFT = e.shiftKey ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+                }
                 if (e.button === 2) isRMBDown = true;
                 updateCursor();
             });
             
             window.addEventListener('mouseup', (e) => {
-                if (e.button === 0) isLMBDown = false;
+                isShiftDown = e.shiftKey;
+                if (e.button === 0) {
+                    isLMBDown = false;
+                    controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE; // Return to normal rotation
+                }
                 if (e.button === 2) isRMBDown = false;
                 updateCursor();
             });
 
+           // Track Shift to instantly change cursor and OrbitControls mode
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Shift') {
+                    isShiftDown = true;
+                    if (isLMBDown) {
+                        controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+                    }
+                    updateCursor();
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (e.key === 'Shift') {
+                    isShiftDown = false;
+                    if (isLMBDown) {
+                        controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+                    }
+                    updateCursor();
+                }
+            });
+
             logAction("Application initialized.", "default");
+
+            // 1) Opera browser detection & red warning message
+            const isOpera = navigator.userAgent.includes("OPR/") || navigator.userAgent.includes("Opera") || (typeof window.opr !== "undefined");
+            if (isOpera) {
+                logAction("Detected Opera browser. Pan action with right mouse key can lead for opening of blank window. There is no solution for it. Change the browser or be more accurate. You can use shift + left button for pan as alternative issue.", "error");
+            }
         }
 
         async function handleFileUpload(event) {
