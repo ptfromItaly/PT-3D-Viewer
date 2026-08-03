@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PT 3D Viewer - STEP, IGES view online</title>
+    <meta name="description" content="3D viewer of CAD .stp / step and .igs / iges files with possibility of measure distance and angles directly on model free online" />
+    <!--
+    Copyright (c) 2026 PRECITOOLS SRLS, Italy.
+    Licensed under the Custom Source-Available License.
+    Unauthorized copying, redistribution, modification, or deployment is prohibited.
+    Version: v0.019 public v0.2
+    -->
+    <link rel="stylesheet" type="text/css" media="screen" href="https://www.precitools-it.com/css-styles/pt_3d_viever_style.css" />
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/occt-import-js@0.0.22/dist/occt-import-js.js"></script>
+</head>
+<body>
+
+    <!-- 
+    ==========================================
+    START OF TOPBAR 
+    ==========================================
+    -->
+    <div class="top-bar" id="topBar">
+        <div class="file-input-wrapper">
+            <button class="btn-normal">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-import-icon lucide-import"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4"/></svg>&nbsp;LOAD
+                <input type="file" id="file-input" accept=".step,.stp,.iges,.igs">
+            </button>
+        </div>
+        <button id="btn-dist" class="btn-normal" onclick="setMode('DISTANCE')">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ruler-icon lucide-ruler"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg>&nbsp;DISTANCE
+        </button>
+        <button id="btn-angle" class="btn-normal" onclick="setMode('ANGLE')">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-spline-pointer-icon lucide-spline-pointer"><path d="M12.034 12.681a.498.498 0 0 1 .647-.647l9 3.5a.5.5 0 0 1-.033.943l-3.444 1.068a1 1 0 0 0-.66.66l-1.067 3.443a.5.5 0 0 1-.943.033z"/><path d="M5 17A12 12 0 0 1 17 5"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/></svg>&nbsp;ANGLE
+        </button>
+        <button id="btn-cancel" class="btn-normal btn-cancel" onclick="cancelMeasurement()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-square-x-icon lucide-square-x"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>&nbsp;CANCEL
+        </button>
+        
+        <!-- 2) Return Home Button on the right -->
+        <button class="btn-normal" style="margin-left: auto;" onclick="window.location.href='https://www.precitools-it.com/'">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-home"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </button>
+        <button class="btn-normal" id="aboutinfo" style="margin-left: 0;" onclick="openAboutModal()">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-info-icon lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        </button>
+    </div>
+    <div class="h-splitter" id="topSplitter"></div>
+    <!-- 
+    ==========================================
+    END OF TOPBAR 
+    ==========================================
+    -->
+
+    <div class="main-content">
+        <!-- 
+        ==========================================
+        START OF CANVAS GENERAL 
+        ==========================================
+        -->
+        <div class="canvas-container" id="canvasWrapper">
+            
+            <!-- VIEW PANEL -->
+            <div class="view-panel">
+                <button class="view-btn" onclick="fitToView()" title="Fit to View (Zoom 90%)">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <div class="view-divider"></div>
+                <button class="view-btn" onclick="setCameraView('ISO')" title="Isometric View">ISO</button>
+                <div class="view-divider"></div>
+                <button class="view-btn" onclick="setCameraView('X_PLUS')" title="View +X Axis"> +X </button>
+                <button class="view-btn" onclick="setCameraView('X_MINUS')" title="View -X Axis"> -X </button>
+                <button class="view-btn" onclick="setCameraView('Y_PLUS')" title="View +Y Axis"> +Y </button>
+                <button class="view-btn" onclick="setCameraView('Y_MINUS')" title="View -Y Axis"> -Y </button>
+                <button class="view-btn" onclick="setCameraView('Z_PLUS')" title="Top View"> +Z </button>
+                <button class="view-btn" onclick="setCameraView('Z_MINUS')" title="Bottom View"> -Z </button>
+            </div>
+
+            <div id="canvas-container"></div>
+        </div>
+        <!-- 
+        ==========================================
+        END OF CANVAS GENERAL 
+        ==========================================
+        -->
+
+        <div class="h-splitter" id="logSplitter"></div>
+
+        <!-- 
+        ==========================================
+        START OF LOG PANEL 
+        ==========================================
+        -->
+        <div class="log-wrapper" id="logWrapper">
+            <div class="log-header">
+                <span>Action Log</span>
+                <div style="display: flex; gap: 5px;">
+                    <button class="btn-normal" id="btn-persist" onclick="togglePersistLog()">Auto-Save: OFF</button>
+                    <button class="btn-normal" onclick="downloadLog()"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-save-check-icon lucide-save-check"><path d="M12.5 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h10.2a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4v4.35"/><path d="m16 19 2 2 4-4"/><path d="M17 15.13V14a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>&nbsp;SAVE LOG</button>
+                    <button class="btn-normal" onclick="clearLog()"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eraser-icon lucide-eraser"><path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21"/><path d="m5.082 11.09 8.828 8.828"/></svg>&nbsp;CLEAR LOG</button>
+                </div>
+            </div>
+            <div id="actionLog"></div>
+        </div>
+        <!-- 
+        ==========================================
+        END OF LOG PANEL 
+        ==========================================
+        -->
+    </div>
+    <!-- 
+    ==========================================
+    START OF ABOUT MODAL 
+    ==========================================
+    -->
+    <div id="aboutModal" class="modal-overlay" onclick="if(event.target===this) closeAboutModal()">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeAboutModal()" title="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+            <h3>About</h3>
+            
+            Copyright (c) 2026 PRECITOOLS SRLS, Italy.<br>
+            Licensed under the Custom Source-Available License.<br>
+            Unauthorized copying, redistribution, modification, or deployment is prohibited.
+        </div>
+    </div>
+    <!-- 
+    ==========================================
+    END OF ABOUT MODAL 
+    ==========================================
+    -->
+
+    <script type="module">
+        // ==========================================
+        // START OF [JS-MODAL]: About Window
+        // ==========================================
+        window.openAboutModal = function() {
+            document.getElementById('aboutModal').style.display = 'flex';
+        };
+        window.closeAboutModal = function() {
+            document.getElementById('aboutModal').style.display = 'none';
+        };
+        // ==========================================
+        // END OF [JS-MODAL]
+        // ==========================================
+
+
+
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ==========================================
+        // START OF [JS-LOG]: Action Log & Crash Recovery
+        // ==========================================
+        let actionHistory = [];
+        let persistLog = localStorage.getItem('cad_persist_log') === 'true';
+
+        // Global interception of invisible JS errors (SegFaults, WebAssembly errors)
+        window.addEventListener('error', function(event) {
+            logAction(`CRITICAL SYSTEM ERROR: ${event.message} (Line: ${event.lineno})`, 'error');
+        });
+        window.addEventListener('unhandledrejection', function(event) {
+            logAction(`PROMISE REJECTION: ${event.reason}`, 'error');
+        });
+
+        function initLog() {
+            const btn = document.getElementById('btn-persist');
+            if (persistLog) {
+                btn.innerText = "Auto-Save: ON";
+                btn.style.background = "#4eab00"; // Active color, to show that recording is in progress
+                btn.style.color = "white";
+                
+                // Restore the log after a crash/page reload
+                const recoveredHTML = localStorage.getItem('cad_crash_log');
+                const recoveredHistory = localStorage.getItem('cad_crash_history');
+                
+                if (recoveredHTML) {
+                    document.getElementById('actionLog').innerHTML = recoveredHTML;
+                    if (recoveredHistory) {
+                        try { actionHistory = JSON.parse(recoveredHistory); } catch(e) {}
+                    }
+                    logAction("--- PAGE RELOADED. RECOVERED PREVIOUS LOG ---", "error");
+                }
+            } else {
+                btn.innerText = "Auto-Save: OFF";
+                btn.style.background = "#e9ecef";
+                btn.style.color = "#adb5bd";
+            }
+        }
+
+        function togglePersistLog() {
+            persistLog = !persistLog;
+            localStorage.setItem('cad_persist_log', persistLog);
+            if (!persistLog) {
+                localStorage.removeItem('cad_crash_log');
+                localStorage.removeItem('cad_crash_history');
+            }
+            initLog();
+            logAction(persistLog ? "Auto-Save Enabled. Log will survive page crash." : "Auto-Save Disabled.");
+        }
+        window.togglePersistLog = togglePersistLog;
+
+        function clearLog() {
+            actionHistory = [];
+            document.getElementById('actionLog').innerHTML = '';
+            if (persistLog) {
+                localStorage.removeItem('cad_crash_log');
+                localStorage.removeItem('cad_crash_history');
+            }
+            logAction("Log cleared.");
+        }
+        window.clearLog = clearLog;
+
+        function downloadLog() {
+            if (actionHistory.length === 0) return;
+            const text = actionHistory.join('\n');
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            // Download the file with the current date and time
+            a.download = `CAD_CrashLog_${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+            logAction("Log downloaded to PC.", "success");
+        }
+        window.downloadLog = downloadLog;
+
+        function logAction(msg, type = 'default') {
+            const time = new Date().toLocaleTimeString();
+            const rawEntry = `[${time}] ${msg}`;
+            actionHistory.push(rawEntry);
+            
+            const div = document.getElementById("actionLog");
+            let styleClass = "log-entry";
+            
+            if (type === 'error') styleClass += " log-error";
+            else if (type === 'success') styleClass += " log-success";
+            else if (type === 'result') styleClass += " log-result";
+
+            div.innerHTML += `<div class="${styleClass}">${rawEntry}</div>`;
+            setTimeout(() => { div.scrollTop = div.scrollHeight; }, 10);
+
+            // SYNCHRONOUS memory write. If the browser crashes in a millisecond, this line is already saved.
+            if (persistLog) {
+                localStorage.setItem('cad_crash_log', div.innerHTML);
+                localStorage.setItem('cad_crash_history', JSON.stringify(actionHistory));
+            }
+        }
+        window.logAction = logAction; 
+
+        // Initialize logger on page load
+        initLog();
+        // ==========================================
+        // END OF [JS-LOG]
+        // ==========================================
+
+
+        // ==========================================
+        // START OF [JS-UI-RESIZE]: Splitter Logic
+        // ==========================================
+        const snapPixel = (val) => {
+            const dpr = window.devicePixelRatio || 1;
+            return Math.round(val * dpr) / dpr;
+        };
+
+        const topSplitter = document.getElementById("topSplitter");
+        const topBar = document.getElementById("topBar");
+        let isResizingTop = false;
+
+        const logSplitter = document.getElementById("logSplitter");
+        const logWrapper = document.getElementById("logWrapper");
+        const canvasContainer = document.querySelector(".canvas-container");
+        let isResizingLog = false;
+
+        if (topSplitter) {
+            topSplitter.addEventListener("mousedown", (e) => {
+                isResizingTop = true;
+                topSplitter.classList.add("active");
+                document.body.style.cursor = "row-resize";
+                e.preventDefault();
+            });
+        }
+
+        if (logSplitter) {
+            logSplitter.addEventListener("mousedown", (e) => {
+                isResizingLog = true;
+                logSplitter.classList.add("active");
+                document.body.style.cursor = "row-resize";
+                e.preventDefault();
+            });
+        }
+
+        document.addEventListener("mousemove", (e) => {
+            if (isResizingTop && topBar) {
+                let newHeight = e.clientY;
+                const minTopHeight = 45; 
+                const maxTopHeight = window.innerHeight * 0.4;
+                
+                if (newHeight < minTopHeight) newHeight = minTopHeight;
+                if (newHeight > maxTopHeight) newHeight = maxTopHeight;
+                
+                topBar.style.height = `${snapPixel(newHeight)}px`;
+                window.dispatchEvent(new Event("resize"));
+            }
+
+            if (isResizingLog && logWrapper) {
+                const containerRect = document.querySelector(".main-content").getBoundingClientRect();
+                let newLogHeight = containerRect.bottom - e.clientY;
+                
+                const maxLogHeight = containerRect.height - 150; 
+                const minLogHeight = 40; 
+                
+                if (newLogHeight > maxLogHeight) newLogHeight = maxLogHeight;
+                if (newLogHeight < minLogHeight) newLogHeight = minLogHeight;
+                
+                logWrapper.style.flex = `0 0 ${snapPixel(newLogHeight)}px`;
+                window.dispatchEvent(new Event("resize"));
+            }
+        });
+
+        document.addEventListener("mouseup", () => {
+            if (isResizingTop) {
+                isResizingTop = false;
+                if (topSplitter) topSplitter.classList.remove("active");
+                document.body.style.cursor = "";
+            }
+            if (isResizingLog) {
+                isResizingLog = false;
+                if (logSplitter) logSplitter.classList.remove("active");
+                document.body.style.cursor = "";
+            }
+        });
+        // ==========================================
+        // END OF [JS-UI-RESIZE]
+        // ==========================================
+
+
+        // ==========================================
+        // START OF [JS-THREEJS-CORE]: Setup & Loading
+        // ==========================================
+        let scene, camera, renderer, controls;
+        let axesScene, axesCamera;
+        let mainModel = new THREE.Group();
+        let edgesGroup = new THREE.Group();
+        let snapPointsMesh = null;
+        let raycaster = new THREE.Raycaster();
+        let mouse = new THREE.Vector2();
+
+        let hoverMarker, marker1, marker2, marker3, marker4;
+        let measureLine1, measureLine2;
+        
+        // ADD HERE: Flag for snap raycast optimization
+        let raycastPending = false;
+
+        // 4) Cursor state variables and logic
+        let isLMBDown = false;
+        let isRMBDown = false;
+        let isHoveringSnap = false;
+        let isShiftDown = false; // <-- ADDED for Shift tracking
+
+        // Custom Rotate Cursor (Base64 SVG encoded) 
+        const ROTATE_CURSOR = `url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2218%22%20height%3D%2218%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cg%20stroke%3D%22black%22%20stroke-width%3D%224%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m15.194%2013.707%203.814%201.86-1.86%203.814%22/%3E%3Cpath%20d%3D%22M16.47214%207.52786%20A5%2010%200%201%200%2013%2021.79796%22/%3E%3Cpath%20d%3D%22M21.79796%2011%20A10%205%200%201%200%2019%2015.57071%22/%3E%3C/g%3E%3Cg%20stroke%3D%22white%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m15.194%2013.707%203.814%201.86-1.86%203.814%22/%3E%3Cpath%20d%3D%22M16.47214%207.52786%20A5%2010%200%201%200%2013%2021.79796%22/%3E%3Cpath%20d%3D%22M21.79796%2011%20A10%205%200%201%200%2019%2015.57071%22/%3E%3C/g%3E%3C/svg%3E') 9 9, auto`;
+
+        function updateCursor() {
+            let cursorStyle = 'default';
+            
+            // If the right mouse button or LMB + SHIFT is pressed -> set the PAN icon (move)
+            if ((isLMBDown && isShiftDown) || isRMBDown) {
+                cursorStyle = 'move'; // Pan/Drag Cursor
+            } else if (isLMBDown) {
+                cursorStyle = ROTATE_CURSOR; // Rotate Cursor
+            } else if (isHoveringSnap) {
+                cursorStyle = 'crosshair'; // Snap point Cursor
+            }
+            
+            document.body.style.cursor = cursorStyle;
+            if (renderer && renderer.domElement) {
+                renderer.domElement.style.cursor = cursorStyle;
+            }
+        }
+
+        init();
+        animate();
+
+        function init() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 20000);
+            camera.up.set(0, 0, 1); // <--- State that the Blue axis (Z) points up!
+            camera.position.set(100, -100, 100); // Set classic CAD isometric position
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            // Tell the renderer not to clear the screen automatically, as we will render 2 scenes on top of each other
+            renderer.autoClear = false;
+
+            // === CREATE X, Y, Z AXES FOR THE BOTTOM LEFT CORNER ===
+            axesScene = new THREE.Scene();
+            // Use an orthographic camera so the arrows do not distort in perspective
+            axesCamera = new THREE.OrthographicCamera(-1.2, 1.2, 1.2, -1.2, 0.1, 10);
+            axesCamera.up.set(0, 0, 1); // <--- Also make the Z axis point up
+            axesCamera.position.set(0, 0, 5);
+            
+            const origin = new THREE.Vector3(0, 0, 0);
+            // Classic CAD colors: Red = X, Green = Y, Blue = Z
+            // ArrowHelper format: (direction, origin, length, color, head_size, head_width)
+            axesScene.add(new THREE.ArrowHelper(new THREE.Vector3(1,0,0), origin, 1, 0xff3333, 0.3, 0.2)); // X
+            axesScene.add(new THREE.ArrowHelper(new THREE.Vector3(0,1,0), origin, 1, 0x33ff33, 0.3, 0.2)); // Y
+            axesScene.add(new THREE.ArrowHelper(new THREE.Vector3(0,0,1), origin, 1, 0x3333ff, 0.3, 0.2)); // Z
+            // ====================================================
+
+            scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight.position.set(1, 2, 3);
+            scene.add(dirLight);
+
+            scene.add(mainModel);
+            scene.add(edgesGroup);
+            
+            function createPixelMarker(color, pixelSize) {
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0], 3));
+                const mat = new THREE.PointsMaterial({ color: color, size: pixelSize, sizeAttenuation: false, depthTest: false, transparent: true });
+                const p = new THREE.Points(geo, mat);
+                p.renderOrder = 1000;
+                p.visible = false;
+                return p;
+            }
+
+            hoverMarker = createPixelMarker(0xffffff, 10); 
+            marker1 = createPixelMarker(0xff3333, 10); 
+            marker2 = createPixelMarker(0xff3333, 10); 
+            marker3 = createPixelMarker(0x4ade80, 10); 
+            marker4 = createPixelMarker(0x4ade80, 10); 
+            scene.add(hoverMarker, marker1, marker2, marker3, marker4);
+
+            const lineMat1 = new THREE.LineBasicMaterial({ color: 0xff3333, linewidth: 2, depthTest: false });
+            const lineMat2 = new THREE.LineBasicMaterial({ color: 0x4ade80, linewidth: 2, depthTest: false });
+            
+            measureLine1 = new THREE.Line(new THREE.BufferGeometry(), lineMat1);
+            measureLine2 = new THREE.Line(new THREE.BufferGeometry(), lineMat2);
+            measureLine1.renderOrder = 1000;
+            measureLine2.renderOrder = 1000;
+            scene.add(measureLine1, measureLine2);
+
+            const resizeObserver = new ResizeObserver(() => {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+            resizeObserver.observe(container);
+
+            document.getElementById('file-input').addEventListener('change', handleFileUpload);
+            renderer.domElement.addEventListener('mousemove', onMouseMove);
+            renderer.domElement.addEventListener('click', onClick);
+
+            // Mousedown/Mouseup listeners to track cursor states and Shift+LMB Pan
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                isShiftDown = e.shiftKey;
+                if (e.button === 0) {
+                    isLMBDown = true;
+                    // Переключаем ЛКМ в OrbitControls на PAN, если нажат Shift
+                    controls.mouseButtons.LEFT = e.shiftKey ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+                }
+                if (e.button === 2) isRMBDown = true;
+                updateCursor();
+            });
+            
+            window.addEventListener('mouseup', (e) => {
+                isShiftDown = e.shiftKey;
+                if (e.button === 0) {
+                    isLMBDown = false;
+                    controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE; // Return to normal rotation
+                }
+                if (e.button === 2) isRMBDown = false;
+                updateCursor();
+            });
+
+           // Track Shift to instantly change cursor and OrbitControls mode
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Shift') {
+                    isShiftDown = true;
+                    if (isLMBDown) {
+                        controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+                    }
+                    updateCursor();
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (e.key === 'Shift') {
+                    isShiftDown = false;
+                    if (isLMBDown) {
+                        controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+                    }
+                    updateCursor();
+                }
+            });
+
+            logAction("Application initialized.", "default");
+
+            // 1) Opera browser detection & red warning message
+            const isOpera = navigator.userAgent.includes("OPR/") || navigator.userAgent.includes("Opera") || (typeof window.opr !== "undefined");
+            if (isOpera) {
+                logAction("Detected Opera browser. Pan action with right mouse key can lead for opening of blank window. There is no solution for it. Change the browser or be more accurate. You can use shift + left button for pan as alternative issue.", "error");
+            }
+        }
+
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // 3) Log Loading Status exactly as requested
+            logAction('Loading & Calculating...', 'default');
+            
+            cancelMeasurement(false); 
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const fileData = new Uint8Array(arrayBuffer);
+
+                const occt = await occtimportjs({
+                    locateFile: (name) => `https://cdn.jsdelivr.net/npm/occt-import-js@0.0.22/dist/${name}`
+                });
+
+                let result = null;
+                const fileNameLow = file.name.toLowerCase();
+                if (fileNameLow.endsWith('.iges') || fileNameLow.endsWith('.igs')) {
+                    result = occt.ReadIgesFile(fileData, null);
+                } else {
+                    result = occt.ReadStepFile(fileData, null);
+                }
+
+                if (result && result.meshes && result.meshes.length > 0) {
+                    buildScene(result);
+                    logAction(`File ${file.name} opened successfully`, 'success');
+                } else {
+                    throw new Error("Invalid CAD data");
+                }
+            } catch (error) {
+                logAction(`Error with opening file ${file.name}`, 'error');
+                console.error(error);
+            }
+        }
+
+        function buildScene(occtResult) {
+            mainModel.clear();
+            edgesGroup.clear();
+            if (snapPointsMesh) {
+                scene.remove(snapPointsMesh);
+                snapPointsMesh.geometry.dispose();
+                snapPointsMesh.material.dispose();
+                snapPointsMesh = null;
+            }
+
+            const material = new THREE.MeshStandardMaterial({ 
+                color: 0x99aabc, roughness: 0.5, metalness: 0.1,
+                polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 
+            });
+
+            const uniquePointsMap = new Map();
+            const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x222222 });
+
+            for (let meshData of occtResult.meshes) {
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(meshData.attributes.position.array, 3));
+                if (meshData.attributes.normal) geometry.setAttribute('normal', new THREE.Float32BufferAttribute(meshData.attributes.normal.array, 3));
+                else geometry.computeVertexNormals();
+                
+                geometry.setIndex(new THREE.Uint16BufferAttribute(meshData.index.array, 1));
+                mainModel.add(new THREE.Mesh(geometry, material));
+
+                const edgesGeo = new THREE.EdgesGeometry(geometry, 20); 
+                edgesGroup.add(new THREE.LineSegments(edgesGeo, edgeMaterial));
+
+                const edgePositions = edgesGeo.attributes.position.array;
+                for (let i = 0; i < edgePositions.length; i += 3) {
+                    const x = edgePositions[i], y = edgePositions[i+1], z = edgePositions[i+2];
+                    uniquePointsMap.set(`${x.toFixed(3)}_${y.toFixed(3)}_${z.toFixed(3)}`, [x, y, z]);
+                }
+            }
+
+            const rawSnapPoints = [];
+            for (let pt of uniquePointsMap.values()) rawSnapPoints.push(pt[0], pt[1], pt[2]);
+
+            const pointsGeo = new THREE.BufferGeometry();
+            pointsGeo.setAttribute('position', new THREE.Float32BufferAttribute(rawSnapPoints, 3));
+            pointsGeo.computeBoundingSphere();
+
+            snapPointsMesh = new THREE.Points(pointsGeo, new THREE.PointsMaterial({ 
+                color: 0x00e5ff, size: 4, sizeAttenuation: false, depthTest: false, transparent: true, opacity: 0.45          
+            }));
+            snapPointsMesh.renderOrder = 999;
+            snapPointsMesh.visible = false; // <--- ADD THIS LINE (Hide points by default)
+            scene.add(snapPointsMesh);
+
+            const box = new THREE.Box3().setFromObject(mainModel);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            
+            setCameraView('ISO');
+            raycaster.params.Points.threshold = size.length() * 0.005; 
+        }
+
+        function onMouseMove(event) {
+            if (!snapPointsMesh) {
+                if (isHoveringSnap) {
+                    isHoveringSnap = false;
+                    updateCursor();
+                }
+                return;
+            }
+            
+            const container = document.getElementById('canvas-container');
+            if (!container) return;
+            const rect = container.getBoundingClientRect();
+            
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            // We just state "mouse moved", but DO NOT DO heavy math right here!
+            raycastPending = true;
+        }
+        // ==========================================
+        // END OF [JS-THREEJS-CORE]
+        // ==========================================
+
+
+        // ==========================================
+        // START OF [JS-MEASURE-LOGIC]: Distance & Angle State Machine
+        // ==========================================
+        const MODES = { NONE: 0, DISTANCE: 1, ANGLE: 2 };
+        let currentMode = MODES.NONE;
+        let clickPoints = [];
+
+        function setMode(modeString) {
+            cancelMeasurement(false); 
+
+            document.getElementById('btn-dist').classList.remove('active');
+            document.getElementById('btn-angle').classList.remove('active');
+
+            if (modeString === 'DISTANCE') {
+                currentMode = MODES.DISTANCE;
+                document.getElementById('btn-dist').classList.add('active');
+                if (snapPointsMesh) snapPointsMesh.visible = true; // <--- SHOW POINTS
+                logAction("Mode selected: DISTANCE. Waiting for click: first point");
+            } else if (modeString === 'ANGLE') {
+                currentMode = MODES.ANGLE;
+                document.getElementById('btn-angle').classList.add('active');
+                if (snapPointsMesh) snapPointsMesh.visible = true; // <--- SHOW POINTS
+                logAction("Mode selected: ANGLE. Waiting for click: first point");
+            } else {
+                currentMode = MODES.NONE;
+                if (snapPointsMesh) snapPointsMesh.visible = false; // <--- HIDE POINTS
+            }
+        }
+        window.setMode = setMode;
+
+        function cancelMeasurement(doLog = true) {
+            clickPoints = [];
+            currentMode = MODES.NONE;
+            
+            marker1.visible = marker2.visible = marker3.visible = marker4.visible = false;
+            measureLine1.geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+            measureLine2.geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+            
+            if (snapPointsMesh) snapPointsMesh.visible = false; // <--- HIDE POINTS
+            if (hoverMarker) hoverMarker.visible = false;       // <--- HIDE CURSOR-MARKER
+            
+            document.getElementById('btn-dist').classList.remove('active');
+            document.getElementById('btn-angle').classList.remove('active');
+
+            if (doLog) logAction("Measurement cancelled");
+        }
+        window.cancelMeasurement = cancelMeasurement;
+
+        function onClick(event) {
+            if (currentMode === MODES.NONE || !hoverMarker.visible) return;
+
+            const pt = hoverMarker.position.clone();
+            clickPoints.push(pt);
+            
+            const pIdx = clickPoints.length;
+            const ptStr = `(${pt.x.toFixed(2)}, ${pt.y.toFixed(2)}, ${pt.z.toFixed(2)})`;
+            logAction(`Point ${pIdx} ${ptStr} clicked`);
+
+            if (currentMode === MODES.DISTANCE) {
+                if (pIdx === 1) {
+                    marker1.position.copy(pt);
+                    marker1.visible = true;
+                    logAction("Waiting for click: second point");
+                } 
+                else if (pIdx === 2) {
+                    marker2.position.copy(pt);
+                    marker2.visible = true;
+                    
+                    measureLine1.geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+                        clickPoints[0].x, clickPoints[0].y, clickPoints[0].z, 
+                        clickPoints[1].x, clickPoints[1].y, clickPoints[1].z
+                    ], 3));
+                    
+                    const dist = clickPoints[0].distanceTo(clickPoints[1]);
+                    logAction(`Distance measured between point 1 and point 2: ${dist.toFixed(2)} mm`, 'result');
+                    
+                    clickPoints = [];
+                    logAction("Waiting for click: first point");
+                }
+            } 
+            
+            else if (currentMode === MODES.ANGLE) {
+                if (pIdx === 1) {
+                    marker1.visible = marker2.visible = marker3.visible = marker4.visible = false;
+                    measureLine1.geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+                    measureLine2.geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+                    
+                    marker1.position.copy(pt);
+                    marker1.visible = true;
+                    logAction("Waiting for click: second point");
+                } 
+                else if (pIdx === 2) {
+                    marker2.position.copy(pt);
+                    marker2.visible = true;
+                    
+                    measureLine1.geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+                        clickPoints[0].x, clickPoints[0].y, clickPoints[0].z, 
+                        clickPoints[1].x, clickPoints[1].y, clickPoints[1].z
+                    ], 3));
+                    
+                    logAction("Direction between point 1 and 2 is constructed");
+                    logAction("Waiting for click: third point");
+                } 
+                else if (pIdx === 3) {
+                    marker3.position.copy(pt);
+                    marker3.visible = true;
+                    logAction("Waiting for click: fourth point");
+                } 
+                else if (pIdx === 4) {
+                    marker4.position.copy(pt);
+                    marker4.visible = true;
+                    
+                    measureLine2.geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+                        clickPoints[2].x, clickPoints[2].y, clickPoints[2].z, 
+                        clickPoints[3].x, clickPoints[3].y, clickPoints[3].z
+                    ], 3));
+
+                    logAction("Direction between point 3 and 4 is constructed");
+
+                    const v1 = new THREE.Vector3().subVectors(clickPoints[1], clickPoints[0]).normalize();
+                    const v2 = new THREE.Vector3().subVectors(clickPoints[3], clickPoints[2]).normalize();
+                    
+                    let angleDeg = THREE.MathUtils.radToDeg(v1.angleTo(v2));
+                    let minAngle = Math.min(angleDeg, 180 - angleDeg);
+                    
+                    logAction(`Angle measured between direction 1 and direction 2: ${minAngle.toFixed(2)}°`, 'result');
+                    
+                    clickPoints = [];
+                    logAction("Waiting for click: first point");
+                }
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // ========================================================
+            // RAYCASTER OPTIMIZATION (CRASH PROTECTION)
+            // Perform point search only 1 time per frame (~60 fps)
+            // AND ONLY if measurement mode is enabled (DISTANCE or ANGLE)
+            // ========================================================
+            if (raycastPending && snapPointsMesh) {
+                raycastPending = false;
+
+                if (currentMode === MODES.NONE) {
+                    // If no mode is selected - hide the marker and do not load the CPU
+                    if (isHoveringSnap) {
+                        isHoveringSnap = false;
+                        hoverMarker.visible = false;
+                        updateCursor();
+                    }
+                } else {
+                    // Heavy math works only when we are actually measuring something
+                    raycaster.setFromCamera(mouse, camera);
+                    const intersects = raycaster.intersectObject(snapPointsMesh);
+
+                    if (intersects.length > 0) {
+                        // take the closest point
+                        intersects.sort((a, b) => a.distanceToRay - b.distanceToRay);
+                        isHoveringSnap = true;
+                        hoverMarker.visible = true;
+                        
+                        const pointIndex = intersects[0].index;
+                        const pos = snapPointsMesh.geometry.attributes.position.array;
+                        hoverMarker.position.set(pos[pointIndex * 3], pos[pointIndex * 3 + 1], pos[pointIndex * 3 + 2]);
+                    } else {
+                        isHoveringSnap = false;
+                        hoverMarker.visible = false;
+                    }
+                    updateCursor();
+                }
+            }
+
+            const container = document.getElementById('canvas-container');
+            if (!container) return; 
+            
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+
+            // 1. Render the MAIN scene
+            renderer.setViewport(0, 0, w, h);
+            renderer.clear();
+            renderer.render(scene, camera);
+
+            // 2. Render the AXES
+            if (axesCamera && axesScene) {
+                axesCamera.up.copy(camera.up); 
+                const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+                axesCamera.position.copy(dir.multiplyScalar(5)); 
+                axesCamera.lookAt(0, 0, 0);
+                
+                const gizmoSize = 100; 
+                const margin = 15;     
+                renderer.setViewport(margin, margin, gizmoSize, gizmoSize);
+                renderer.clearDepth(); 
+                renderer.render(axesScene, axesCamera);
+            }
+        }
+        // ==========================================
+        // END OF [JS-MEASURE-LOGIC]
+        // ==========================================
+
+        // ==========================================
+        // START OF [JS-VIEW-CONTROLS]: Views & Zoom Fit
+        // ==========================================
+        
+       function fitToView(log = true) {
+            if (mainModel.children.length === 0) return;
+            
+            const box = new THREE.Box3().setFromObject(mainModel);
+            const center = box.getCenter(new THREE.Vector3());
+            const sphere = box.getBoundingSphere(new THREE.Sphere());
+            const radius = sphere.radius;
+
+            // Improved math: consider window proportions, 
+            // so elongated parts do not get clipped on the sides
+            const vFov = camera.fov * (Math.PI / 180);
+            const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+            const minFov = Math.min(vFov, hFov);
+            
+            let cameraDistance = radius / Math.sin(minFov / 2);
+            
+            // ========================================================
+            // ZOOM CONFIGURATION:
+            // 0.95 = part takes ~90-95% of the screen. 
+            // If you need it larger - set to 0.85 or 0.9
+            // If you need it smaller - set to 1.1
+            // ========================================================
+            cameraDistance *= 0.95; 
+
+            const direction = new THREE.Vector3().subVectors(camera.position, center).normalize();
+            if (direction.lengthSq() < 0.01) direction.set(1, 1, 1).normalize();
+
+            camera.position.copy(center).add(direction.multiplyScalar(cameraDistance));
+            controls.target.copy(center);
+            
+            camera.updateProjectionMatrix();
+            controls.update();
+
+            if (log) logAction("View scaled to fit screen");
+        }
+        window.fitToView = fitToView;
+
+        function setCameraView(viewType) {
+            if (mainModel.children.length === 0) return;
+            
+            const box = new THREE.Box3().setFromObject(mainModel);
+            const center = box.getCenter(new THREE.Vector3());
+
+            let offset = new THREE.Vector3();
+            
+            // In CAD, Z is usually directed upwards. Fix the up vector so the model doesn't rotate awkwardly
+            camera.up.set(0, 0, 1);
+
+            switch(viewType) {
+                case 'ISO': 
+                    offset.set(1, -1, 1); // Classic isometric for Z-up
+                    break;
+                case 'X_PLUS': offset.set(1, 0, 0); break;
+                case 'X_MINUS': offset.set(-1, 0, 0); break;
+                case 'Y_PLUS': offset.set(0, 1, 0); break;
+                case 'Y_MINUS': offset.set(0, -1, 0); break;
+                case 'Z_PLUS': // Top view
+                    offset.set(0, 0, 1);
+                    // When looking straight down along Z, the Up vector must be changed, otherwise a matrix error occurs
+                    camera.up.set(0, 1, 0); 
+                    break;
+                case 'Z_MINUS': // Bottom view
+                    offset.set(0, 0, -1);
+                    camera.up.set(0, 1, 0);
+                    break;
+            }
+
+            // Place the camera near the center from the side of the chosen axis
+            camera.position.copy(center).add(offset);
+            camera.lookAt(center);
+            controls.target.copy(center);
+            
+            // Automatically apply the perfect zoom from this side
+            fitToView(false);
+            
+            logAction(`Camera view changed: ${viewType}`);
+        }
+        window.setCameraView = setCameraView;
+        
+        // ==========================================
+        // END OF [JS-VIEW-CONTROLS]
+        // ==========================================
+
+    </script>
+</body>
+</html>
