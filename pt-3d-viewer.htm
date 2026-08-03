@@ -9,7 +9,7 @@
     Copyright (c) 2026 PRECITOOLS SRLS, Italy.
     Licensed under the Custom Source-Available License.
     Unauthorized copying, redistribution, modification, or deployment is prohibited.
-    Version: v0.019 public v0.2
+    Version: v0.022 public v0.3
     -->
     <link rel="stylesheet" type="text/css" media="screen" href="https://www.precitools-it.com/css-styles/pt_3d_viever_style.css" />
     <script type="importmap">
@@ -157,20 +157,51 @@
 
 
         import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
 
-        // ==========================================
+// ==========================================
         // START OF [JS-LOG]: Action Log & Crash Recovery
         // ==========================================
         let actionHistory = [];
         let persistLog = localStorage.getItem('cad_persist_log') === 'true';
 
+        // --- LIBRARY OF ALL MESSAGES (LOGS) ---
+        const MSG = {
+            SYS_ERROR: (msg, line) => `CRITICAL SYSTEM ERROR: ${msg} (Line: ${line})`,
+            PROMISE_ERR: (reason) => `PROMISE REJECTION: ${reason}`,
+            RELOADED: "--- PAGE RELOADED. RECOVERED PREVIOUS LOG ---",
+            AUTOSAVE_ON: "Auto-Save Enabled. Log will survive page crash.",
+            AUTOSAVE_OFF: "Auto-Save Disabled.",
+            CLEARED: "Log cleared.",
+            DOWNLOADED: "Log downloaded to PC.",
+            INIT: "Application initialized.",
+            OPERA_WARN: "Detected Opera browser. Pan action with right mouse key can lead for opening of blank window. There is no solution for it. Change the browser or be more accurate. You can use shift + left button for pan as alternative issue.",
+            LOADING: "Loading & Calculating...",
+            FILE_OK: (name) => `File ${name} opened successfully`,
+            FILE_ERR: (name) => `Error with opening file ${name}`,
+            MODE_DIST: "Mode selected: DISTANCE. Waiting for click: first point",
+            MODE_ANGLE: "Mode selected: ANGLE. Waiting for click: first point",
+            MEASURE_CANCEL: "Measurement cancelled",
+            PT_CLICKED: (idx, str) => `Point ${idx} ${str} clicked`,
+            WAIT_PT_1: "Waiting for click: first point",
+            WAIT_PT_2: "Waiting for click: second point",
+            WAIT_PT_3: "Waiting for click: third point",
+            WAIT_PT_4: "Waiting for click: fourth point",
+            DIST_RESULT: (dist) => `Distance measured between point 1 and point 2: ${dist} mm`,
+            DIR_1_2: "Direction between point 1 and 2 is constructed",
+            DIR_3_4: "Direction between point 3 and 4 is constructed",
+            ANGLE_RESULT: (angle) => `Angle measured between direction 1 and direction 2: ${angle}°`,
+            VIEW_FIT: "View scaled to fit screen",
+            VIEW_CAM: (type) => `Camera view changed: ${type}`
+        };
+        // -----------------------------------------
+
         // Global interception of invisible JS errors (SegFaults, WebAssembly errors)
         window.addEventListener('error', function(event) {
-            logAction(`CRITICAL SYSTEM ERROR: ${event.message} (Line: ${event.lineno})`, 'error');
+            logAction(MSG.SYS_ERROR(event.message, event.lineno), 'error');
         });
         window.addEventListener('unhandledrejection', function(event) {
-            logAction(`PROMISE REJECTION: ${event.reason}`, 'error');
+            logAction(MSG.PROMISE_ERR(event.reason), 'error');
         });
 
         function initLog() {
@@ -189,7 +220,7 @@
                     if (recoveredHistory) {
                         try { actionHistory = JSON.parse(recoveredHistory); } catch(e) {}
                     }
-                    logAction("--- PAGE RELOADED. RECOVERED PREVIOUS LOG ---", "error");
+                    logAction(MSG.RELOADED, "error");
                 }
             } else {
                 btn.innerText = "Auto-Save: OFF";
@@ -206,7 +237,7 @@
                 localStorage.removeItem('cad_crash_history');
             }
             initLog();
-            logAction(persistLog ? "Auto-Save Enabled. Log will survive page crash." : "Auto-Save Disabled.");
+            logAction(persistLog ? MSG.AUTOSAVE_ON : MSG.AUTOSAVE_OFF);
         }
         window.togglePersistLog = togglePersistLog;
 
@@ -217,7 +248,7 @@
                 localStorage.removeItem('cad_crash_log');
                 localStorage.removeItem('cad_crash_history');
             }
-            logAction("Log cleared.");
+            logAction(MSG.CLEARED);
         }
         window.clearLog = clearLog;
 
@@ -232,7 +263,7 @@
             a.download = `CAD_CrashLog_${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
             a.click();
             URL.revokeObjectURL(url);
-            logAction("Log downloaded to PC.", "success");
+            logAction(MSG.DOWNLOADED, "success");
         }
         window.downloadLog = downloadLog;
 
@@ -354,6 +385,7 @@
         let mainModel = new THREE.Group();
         let edgesGroup = new THREE.Group();
         let snapPointsMesh = null;
+        let gridHelper = null; // <-- GRID ADD
         let raycaster = new THREE.Raycaster();
         let mouse = new THREE.Vector2();
 
@@ -407,8 +439,10 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             container.appendChild(renderer.domElement);
 
-            controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
+            controls = new TrackballControls(camera, renderer.domElement);
+            controls.rotateSpeed = 4.0; // Rotation sensitivity
+            controls.zoomSpeed = 1.2;
+            controls.panSpeed = 0.8;
             // Tell the renderer not to clear the screen automatically, as we will render 2 scenes on top of each other
             renderer.autoClear = false;
 
@@ -472,35 +506,50 @@
             renderer.domElement.addEventListener('mousemove', onMouseMove);
             renderer.domElement.addEventListener('click', onClick);
 
-            // Mousedown/Mouseup listeners to track cursor states and Shift+LMB Pan
-            renderer.domElement.addEventListener('mousedown', (e) => {
+            // --- NEW MOUSE AND SHIFT CONTROL BLOCK (VIRTUAL PAN FIX) ---
+            renderer.domElement.addEventListener('pointerdown', (e) => {
                 isShiftDown = e.shiftKey;
-                if (e.button === 0) {
+                
+                // The TrackballControls buttons are hardcoded in THREE.js (0 - Rotation, 2 - Pan).
+                // When Shift + LMB is pressed, we intercept the click and send a virtual "Right Click" to the controller!
+                if (e.shiftKey && e.button === 0 && !e.isVirtualPan) {
+                    e.stopPropagation();
+                    
+                    const fakePanEvent = new PointerEvent('pointerdown', {
+                        bubbles: true,
+                        cancelable: true,
+                        pointerId: e.pointerId,
+                        pointerType: e.pointerType,
+                        clientX: e.clientX,
+                        clientY: e.clientY,
+                        screenX: e.screenX,
+                        screenY: e.screenY,
+                        button: 2,   // <--- Send the RIGHT button (turn on Pan)
+                        buttons: 2
+                    });
+                    fakePanEvent.isVirtualPan = true; // Label from looping
+                    renderer.domElement.dispatchEvent(fakePanEvent);
+                    
                     isLMBDown = true;
-                    // Переключаем ЛКМ в OrbitControls на PAN, если нажат Shift
-                    controls.mouseButtons.LEFT = e.shiftKey ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+                    updateCursor();
+                    return;
                 }
+
+                if (e.button === 0) isLMBDown = true;
                 if (e.button === 2) isRMBDown = true;
                 updateCursor();
-            });
-            
-            window.addEventListener('mouseup', (e) => {
+            }, true); 
+
+            window.addEventListener('pointerup', (e) => {
                 isShiftDown = e.shiftKey;
-                if (e.button === 0) {
-                    isLMBDown = false;
-                    controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE; // Return to normal rotation
-                }
+                if (e.button === 0) isLMBDown = false;
                 if (e.button === 2) isRMBDown = false;
                 updateCursor();
-            });
+            }, true);
 
-           // Track Shift to instantly change cursor and OrbitControls mode
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Shift') {
                     isShiftDown = true;
-                    if (isLMBDown) {
-                        controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
-                    }
                     updateCursor();
                 }
             });
@@ -508,19 +557,16 @@
             window.addEventListener('keyup', (e) => {
                 if (e.key === 'Shift') {
                     isShiftDown = false;
-                    if (isLMBDown) {
-                        controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
-                    }
                     updateCursor();
                 }
             });
+            // ------------------------------------------
 
-            logAction("Application initialized.", "default");
+            logAction(MSG.INIT, "default");
 
-            // 1) Opera browser detection & red warning message
             const isOpera = navigator.userAgent.includes("OPR/") || navigator.userAgent.includes("Opera") || (typeof window.opr !== "undefined");
             if (isOpera) {
-                logAction("Detected Opera browser. Pan action with right mouse key can lead for opening of blank window. There is no solution for it. Change the browser or be more accurate. You can use shift + left button for pan as alternative issue.", "error");
+                logAction(MSG.OPERA_WARN, "error");
             }
         }
 
@@ -529,7 +575,7 @@
             if (!file) return;
 
             // 3) Log Loading Status exactly as requested
-            logAction('Loading & Calculating...', 'default');
+             logAction(MSG.LOADING, 'default');
             
             cancelMeasurement(false); 
 
@@ -551,12 +597,12 @@
 
                 if (result && result.meshes && result.meshes.length > 0) {
                     buildScene(result);
-                    logAction(`File ${file.name} opened successfully`, 'success');
+                    logAction(MSG.FILE_OK(file.name), 'success');
                 } else {
                     throw new Error("Invalid CAD data");
                 }
             } catch (error) {
-                logAction(`Error with opening file ${file.name}`, 'error');
+                logAction(MSG.FILE_ERR(file.name), 'error');
                 console.error(error);
             }
         }
@@ -569,6 +615,14 @@
                 snapPointsMesh.geometry.dispose();
                 snapPointsMesh.material.dispose();
                 snapPointsMesh = null;
+            }
+
+             // --- ADD GRID CLEAN ---
+            if (gridHelper) {
+                scene.remove(gridHelper);
+                gridHelper.geometry.dispose();
+                gridHelper.material.dispose();
+                gridHelper = null;
             }
 
             const material = new THREE.MeshStandardMaterial({ 
@@ -615,7 +669,36 @@
             const box = new THREE.Box3().setFromObject(mainModel);
             const center = box.getCenter(new THREE.Vector3());
             const size = box.getSize(new THREE.Vector3());
+
+            // ==========================================
+            // ADD GRID (STEP 10 mm)
+            // ==========================================
+            const maxDim = Math.max(size.x, size.y, size.z);
+            let gridSize = Math.ceil(maxDim / 10) * 10 * 3; // GRID SIZE 3 TIMES OF PART
+            if (gridSize < 100) gridSize = 100; // Min size grid 100х100
             
+            const divisions = gridSize / 10; // 10 mm grid squares
+
+            // COLOR HERE
+            const colorCenter = 0x888888; // Central axis color (zero cross)
+            const colorGrid = 0x555555;   // Other lines color
+
+            gridHelper = new THREE.GridHelper(gridSize, divisions, colorCenter, colorGrid);
+            
+            // Grid rotation to lie in XY plane (Z up)
+            gridHelper.rotation.x = Math.PI / 2;
+            
+            // Zero fix 
+            gridHelper.position.set(0, 0, 0); 
+            
+            // Small and transparent lines
+            gridHelper.material.opacity = 0.25;
+            gridHelper.material.transparent = true;
+            gridHelper.material.depthWrite = false; // Grid to prevent "cut" of transparent elements
+            
+            scene.add(gridHelper);
+            // ==========================================
+
             setCameraView('ISO');
             raycaster.params.Points.threshold = size.length() * 0.005; 
         }
@@ -661,12 +744,12 @@
                 currentMode = MODES.DISTANCE;
                 document.getElementById('btn-dist').classList.add('active');
                 if (snapPointsMesh) snapPointsMesh.visible = true; // <--- SHOW POINTS
-                logAction("Mode selected: DISTANCE. Waiting for click: first point");
+                logAction(MSG.MODE_DIST);
             } else if (modeString === 'ANGLE') {
                 currentMode = MODES.ANGLE;
                 document.getElementById('btn-angle').classList.add('active');
                 if (snapPointsMesh) snapPointsMesh.visible = true; // <--- SHOW POINTS
-                logAction("Mode selected: ANGLE. Waiting for click: first point");
+                logAction(MSG.MODE_ANGLE);
             } else {
                 currentMode = MODES.NONE;
                 if (snapPointsMesh) snapPointsMesh.visible = false; // <--- HIDE POINTS
@@ -688,7 +771,7 @@
             document.getElementById('btn-dist').classList.remove('active');
             document.getElementById('btn-angle').classList.remove('active');
 
-            if (doLog) logAction("Measurement cancelled");
+            if (doLog) logAction(MSG.MEASURE_CANCEL);
         }
         window.cancelMeasurement = cancelMeasurement;
 
@@ -700,13 +783,13 @@
             
             const pIdx = clickPoints.length;
             const ptStr = `(${pt.x.toFixed(2)}, ${pt.y.toFixed(2)}, ${pt.z.toFixed(2)})`;
-            logAction(`Point ${pIdx} ${ptStr} clicked`);
+            logAction(MSG.PT_CLICKED(pIdx, ptStr));
 
             if (currentMode === MODES.DISTANCE) {
                 if (pIdx === 1) {
                     marker1.position.copy(pt);
                     marker1.visible = true;
-                    logAction("Waiting for click: second point");
+                    logAction(MSG.WAIT_PT_2);
                 } 
                 else if (pIdx === 2) {
                     marker2.position.copy(pt);
@@ -718,10 +801,10 @@
                     ], 3));
                     
                     const dist = clickPoints[0].distanceTo(clickPoints[1]);
-                    logAction(`Distance measured between point 1 and point 2: ${dist.toFixed(2)} mm`, 'result');
+                    logAction(MSG.DIST_RESULT(dist.toFixed(2)), 'result');
                     
                     clickPoints = [];
-                    logAction("Waiting for click: first point");
+                    logAction(MSG.WAIT_PT_1);
                 }
             } 
             
@@ -733,7 +816,7 @@
                     
                     marker1.position.copy(pt);
                     marker1.visible = true;
-                    logAction("Waiting for click: second point");
+                    logAction(MSG.WAIT_PT_2);
                 } 
                 else if (pIdx === 2) {
                     marker2.position.copy(pt);
@@ -744,13 +827,13 @@
                         clickPoints[1].x, clickPoints[1].y, clickPoints[1].z
                     ], 3));
                     
-                    logAction("Direction between point 1 and 2 is constructed");
-                    logAction("Waiting for click: third point");
+                    logAction(MSG.DIR_1_2);
+                    logAction(MSG.WAIT_PT_3);
                 } 
                 else if (pIdx === 3) {
                     marker3.position.copy(pt);
                     marker3.visible = true;
-                    logAction("Waiting for click: fourth point");
+                    logAction(MSG.WAIT_PT_4);
                 } 
                 else if (pIdx === 4) {
                     marker4.position.copy(pt);
@@ -761,7 +844,7 @@
                         clickPoints[3].x, clickPoints[3].y, clickPoints[3].z
                     ], 3));
 
-                    logAction("Direction between point 3 and 4 is constructed");
+                    logAction(MSG.DIR_3_4);
 
                     const v1 = new THREE.Vector3().subVectors(clickPoints[1], clickPoints[0]).normalize();
                     const v2 = new THREE.Vector3().subVectors(clickPoints[3], clickPoints[2]).normalize();
@@ -772,7 +855,7 @@
                     logAction(`Angle measured between direction 1 and direction 2: ${minAngle.toFixed(2)}°`, 'result');
                     
                     clickPoints = [];
-                    logAction("Waiting for click: first point");
+                    logAction(MSG.WAIT_PT_1);
                 }
             }
         }
@@ -884,7 +967,7 @@
             camera.updateProjectionMatrix();
             controls.update();
 
-            if (log) logAction("View scaled to fit screen");
+            if (log) logAction(MSG.VIEW_FIT);
         }
         window.fitToView = fitToView;
 
@@ -896,37 +979,42 @@
 
             let offset = new THREE.Vector3();
             
-            // In CAD, Z is usually directed upwards. Fix the up vector so the model doesn't rotate awkwardly
+            // RIGIDLY fix the Z-axis upward. Under no circumstances change it to (0, 1, 0),
+            // otherwise OrbitControls breaks and blocks rotation.
             camera.up.set(0, 0, 1);
 
             switch(viewType) {
                 case 'ISO': 
-                    offset.set(1, -1, 1); // Classic isometric for Z-up
+                    offset.set(1, -1, 1); 
                     break;
                 case 'X_PLUS': offset.set(1, 0, 0); break;
                 case 'X_MINUS': offset.set(-1, 0, 0); break;
                 case 'Y_PLUS': offset.set(0, 1, 0); break;
                 case 'Y_MINUS': offset.set(0, -1, 0); break;
                 case 'Z_PLUS': // Top view
-                    offset.set(0, 0, 1);
-                    // When looking straight down along Z, the Up vector must be changed, otherwise a matrix error occurs
-                    camera.up.set(0, 1, 0); 
+                    // SECRET TRICK: Add a micro-offset of 0.0001 in Y.
+                    // Visually, the camera is looking straight up, but mathematically
+                    // it doesn't align with the UP vector, so the axis lock doesn't work.
+                    offset.set(0, 0.0001, 1);
                     break;
                 case 'Z_MINUS': // Bottom view
-                    offset.set(0, 0, -1);
-                    camera.up.set(0, 1, 0);
+                    offset.set(0, 0.0001, -1);
                     break;
             }
 
-            // Place the camera near the center from the side of the chosen axis
+            // Reset possible camera roll
+            camera.up.set(0, 0, 1);
+            
             camera.position.copy(center).add(offset);
             camera.lookAt(center);
             controls.target.copy(center);
             
-            // Automatically apply the perfect zoom from this side
+            // Force TrackballControls to accept new orientation
+            controls.update(); 
+            
             fitToView(false);
             
-            logAction(`Camera view changed: ${viewType}`);
+            logAction(MSG.VIEW_CAM(viewType));
         }
         window.setCameraView = setCameraView;
         
